@@ -1,7 +1,6 @@
 #include "NamedPipeServer.h"
 
 #define PIPE_TIMEOUT 5000
-#define BUFSIZE 4096
 
 
 VOID WINAPI ReadCallback(DWORD, DWORD, LPOVERLAPPED);

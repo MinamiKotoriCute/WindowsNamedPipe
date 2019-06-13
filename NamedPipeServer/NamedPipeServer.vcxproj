@@ -129,6 +129,7 @@
     <ClCompile Include="NamedPipeSocket.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="NamedPipeDefinition.h" />
     <ClInclude Include="NamedPipeServer.h" />
     <ClInclude Include="NamedPipeSocket.h" />
   </ItemGroup>

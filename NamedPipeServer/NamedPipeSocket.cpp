@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "NamedPipeDefinition.h"
+
 
 NamedPipeSocket::NamedPipeSocket()
 {
@@ -12,18 +14,18 @@ NamedPipeSocket::~NamedPipeSocket()
 {
 }
 
-bool NamedPipeSocket::connectToServer(const std::string& pipeName)
+bool NamedPipeSocket::connectToServer(const std::string& pipeName, int timeout)
 {
+	return connectToServer(pipeName, "", timeout);
 }
 
-bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::string& serverName)
+bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::string& serverName, int timeout)
 {
 	close();
 
 	std::string fullPipeName = "\\\\" + serverName + "\\pipe\\" + pipeName;
 
 	HANDLE hPipe;
-
 	while (1)
 	{
 		hPipe = CreateFile(
@@ -36,29 +38,31 @@ bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::st
 			0,              // default attributes 
 			NULL);          // no template file 
 
-	  // Break if the pipe handle is valid. 
-
+		// Break if the pipe handle is valid.
 		if (hPipe != INVALID_HANDLE_VALUE)
 			break;
 
 		// Exit if an error other than ERROR_PIPE_BUSY occurs. 
-
 		if (GetLastError() != ERROR_PIPE_BUSY)
 		{
 			printf("Could not open pipe. GLE=%d\n", GetLastError());
-			return -1;
+			return false;
 		}
 
-		// All pipe instances are busy, so wait for 20 seconds. 
-
-		if (!WaitNamedPipe(fullPipeName.data(), 20000))
+		// All pipe instances are busy, so wait for [timeout] seconds. 
+		if (!WaitNamedPipe(fullPipeName.data(), timeout))
 		{
 			printf("Could not open pipe: 20 second wait timed out.");
-			return -1;
+			return false;
 		}
 	}
+	m_pipe = hPipe;
 
-	return m_pipe != NULL;
+
+	// set ready read callback
+
+
+	return isOpen();
 }
 
 void NamedPipeSocket::write(const char* data)
@@ -86,11 +90,18 @@ void NamedPipeSocket::close()
 {
 	if (isOpen()) {
 		CloseHandle(m_pipe);
-		m_pipe = 0;
+		m_pipe = NULL;
 	}
 }
 
 bool NamedPipeSocket::isOpen() const
 {
 	return m_pipe != NULL;
+}
+
+VOID __stdcall NamedPipeSocket::readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVERLAPPED lpOverLap)
+{
+	LPPIPEINST lpPipeInst = (LPPIPEINST)lpOverLap;
+	NamedPipeSocket* instance = (NamedPipeSocket*)lpPipeInst->instance;
+
 }
