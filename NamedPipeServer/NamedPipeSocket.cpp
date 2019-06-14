@@ -60,7 +60,8 @@ bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::st
 
 
 	// set ready read callback
-
+	m_readBuffer.resize(BUFSIZE);
+	setReadyReadCallback();
 
 	return isOpen();
 }
@@ -104,4 +105,14 @@ VOID __stdcall NamedPipeSocket::readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVER
 	LPPIPEINST lpPipeInst = (LPPIPEINST)lpOverLap;
 	NamedPipeSocket* instance = (NamedPipeSocket*)lpPipeInst->instance;
 
+}
+
+void NamedPipeSocket::setReadyReadCallback()
+{
+	BOOL fRead = ReadFileEx(
+		m_pipe,
+		&m_readBuffer[0],
+		m_readBuffer.size(),
+		(LPOVERLAPPED)lpPipeInst,
+		(LPOVERLAPPED_COMPLETION_ROUTINE)CompletedReadRoutine);
 }

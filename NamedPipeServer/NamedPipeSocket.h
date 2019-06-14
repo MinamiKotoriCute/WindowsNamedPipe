@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <string>
+#include <vector>
 
 class NamedPipeSocket
 {
@@ -24,7 +25,9 @@ public:
 
 private:
 	static VOID WINAPI readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVERLAPPED lpOverLap);
+	void setReadyReadCallback();
 
 	HANDLE m_pipe;
+	std::vector<char> m_readBuffer;
 };
 

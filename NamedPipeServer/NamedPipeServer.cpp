@@ -1,19 +1,11 @@
 #include "NamedPipeServer.h"
 
+#include "NamedPipeDefinition.h"
+
 #define PIPE_TIMEOUT 5000
 
 
 VOID WINAPI ReadCallback(DWORD, DWORD, LPOVERLAPPED);
-
-typedef struct
-{
-	OVERLAPPED oOverlap;
-	HANDLE hPipeInst;
-	TCHAR chRequest[BUFSIZE];
-	DWORD cbRead;
-	TCHAR chReply[BUFSIZE];
-	DWORD cbToWrite;
-} PIPEINST, * LPPIPEINST;
 
 NamedPipeServer::NamedPipeServer()
 {

@@ -33,7 +33,7 @@
       <Filter>標頭檔</Filter>
     </ClInclude>
     <ClInclude Include="NamedPipeDefinition.h">
-      <Filter>來源檔案</Filter>
+      <Filter>標頭檔</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
