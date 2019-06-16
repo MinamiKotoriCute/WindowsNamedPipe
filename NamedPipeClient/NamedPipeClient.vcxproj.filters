@@ -18,5 +18,16 @@
     <ClCompile Include="main.cpp">
       <Filter>來源檔案</Filter>
     </ClCompile>
+    <ClCompile Include="..\NamedPipeServer\NamedPipeSocket.cpp">
+      <Filter>來源檔案</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\NamedPipeServer\NamedPipeDefinition.h">
+      <Filter>來源檔案</Filter>
+    </ClInclude>
+    <ClInclude Include="..\NamedPipeServer\NamedPipeSocket.h">
+      <Filter>來源檔案</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -4,6 +4,9 @@
 
 #include <string>
 #include <vector>
+#include <functional>
+
+#include "NamedPipeDefinition.h"
 
 class NamedPipeSocket
 {
@@ -23,11 +26,14 @@ public:
 	// check the named pipe is connected
 	bool isOpen() const;
 
+	std::function<void(const char* data, std::size_t size)> onReadyRead;
+
 private:
 	static VOID WINAPI readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVERLAPPED lpOverLap);
 	void setReadyReadCallback();
 
-	HANDLE m_pipe;
+	LPPIPEINST m_pipeInstance;
+	//HANDLE m_pipe;
 	std::vector<char> m_readBuffer;
 };
 

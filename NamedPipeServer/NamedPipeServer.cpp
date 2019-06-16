@@ -90,7 +90,7 @@ void NamedPipeServer::close()
 
 void NamedPipeServer::processEvents()
 {
-	DWORD dwWait = WaitForSingleObjectEx(
+	/*DWORD dwWait = WaitForSingleObjectEx(
 		m_connectEvent,  // event object to wait for 
 		INFINITE,       // waits indefinitely 
 		TRUE);          // alertable wait enabled 
@@ -157,7 +157,7 @@ void NamedPipeServer::processEvents()
 		printf("WaitForSingleObjectEx (%d)\n", GetLastError());
 		return 0;
 	}
-	}
+	}*/
 }
 
 bool NamedPipeServer::connectToNewClient()
@@ -227,7 +227,7 @@ bool NamedPipeServer::createNewClient()
 	// Note that this same routine is later used as a 
 	// completion routine after a write operation. 
 
-	lpPipeInst->cbToWrite = 0;
+	//lpPipeInst->cbToWrite = 0;
 }
 
 
@@ -241,10 +241,10 @@ VOID WINAPI ReadCallback(DWORD dwErr, DWORD cbBytesRead, LPOVERLAPPED lpOverLap)
 
 	LPPIPEINST lpPipeInst = (LPPIPEINST)lpOverLap;
 
-	BOOL fRead = ReadFileEx(
+	/*BOOL fRead = ReadFileEx(
 		lpPipeInst->hPipeInst,
 		lpPipeInst->chRequest,
 		BUFSIZE * sizeof(TCHAR),
 		(LPOVERLAPPED)lpPipeInst,
-		(LPOVERLAPPED_COMPLETION_ROUTINE)CompletedReadRoutine);
+		(LPOVERLAPPED_COMPLETION_ROUTINE)CompletedReadRoutine);*/
 }

@@ -16,7 +16,7 @@ NamedPipeSocket::~NamedPipeSocket()
 
 bool NamedPipeSocket::connectToServer(const std::string& pipeName, int timeout)
 {
-	return connectToServer(pipeName, "", timeout);
+	return connectToServer(pipeName, ".", timeout);
 }
 
 bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::string& serverName, int timeout)
@@ -35,7 +35,7 @@ bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::st
 			0,              // no sharing 
 			NULL,           // default security attributes
 			OPEN_EXISTING,  // opens existing pipe 
-			0,              // default attributes 
+			FILE_FLAG_OVERLAPPED,              // overlapped mode  
 			NULL);          // no template file 
 
 		// Break if the pipe handle is valid.
@@ -56,8 +56,17 @@ bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::st
 			return false;
 		}
 	}
-	m_pipe = hPipe;
 
+	m_pipeInstance = (LPPIPEINST)GlobalAlloc(
+		GPTR, sizeof(PIPEINST));
+	if (m_pipeInstance == NULL)
+	{
+		printf("GlobalAlloc failed (%d)\n", GetLastError());
+		return 0;
+	}
+
+	m_pipeInstance->hPipeInst = hPipe;
+	m_pipeInstance->instance = this;
 
 	// set ready read callback
 	m_readBuffer.resize(BUFSIZE);
@@ -80,7 +89,7 @@ void NamedPipeSocket::write(const char* data, std::size_t size)
 	}
 
 	DWORD dwWritten;
-	WriteFile(m_pipe,
+	WriteFile(m_pipeInstance->hPipeInst,
 		data,
 		size,   // = length of string + terminating '\0' !!!
 		&dwWritten,
@@ -90,14 +99,17 @@ void NamedPipeSocket::write(const char* data, std::size_t size)
 void NamedPipeSocket::close()
 {
 	if (isOpen()) {
-		CloseHandle(m_pipe);
-		m_pipe = NULL;
+		CloseHandle(m_pipeInstance->hPipeInst);
+		m_pipeInstance->hPipeInst = NULL;
+
+		GlobalFree(m_pipeInstance);
+		m_pipeInstance = NULL;
 	}
 }
 
 bool NamedPipeSocket::isOpen() const
 {
-	return m_pipe != NULL;
+	return m_pipeInstance != NULL;
 }
 
 VOID __stdcall NamedPipeSocket::readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVERLAPPED lpOverLap)
@@ -105,14 +117,31 @@ VOID __stdcall NamedPipeSocket::readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVER
 	LPPIPEINST lpPipeInst = (LPPIPEINST)lpOverLap;
 	NamedPipeSocket* instance = (NamedPipeSocket*)lpPipeInst->instance;
 
+	if (dwErr == 0 && instance->onReadyRead) {
+		instance->onReadyRead(&instance->m_readBuffer[0], cbBytesRead);
+	}
 }
 
 void NamedPipeSocket::setReadyReadCallback()
 {
 	BOOL fRead = ReadFileEx(
-		m_pipe,
+		m_pipeInstance->hPipeInst,
 		&m_readBuffer[0],
 		m_readBuffer.size(),
-		(LPOVERLAPPED)lpPipeInst,
-		(LPOVERLAPPED_COMPLETION_ROUTINE)CompletedReadRoutine);
+		(LPOVERLAPPED)m_pipeInstance,
+		(LPOVERLAPPED_COMPLETION_ROUTINE)&NamedPipeSocket::readyRead);
+
+	if (!fRead) {
+		printf("GG\n");
+		return;
+	}
+
+	switch (GetLastError())
+	{
+	case ERROR_SUCCESS:
+		break;
+	default:
+		printf("GGGG %d", GetLastError());
+		break;
+	}
 }
