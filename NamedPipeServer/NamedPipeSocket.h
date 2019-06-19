@@ -12,6 +12,7 @@ class NamedPipeSocket
 {
 public:
 	NamedPipeSocket();
+	NamedPipeSocket(HANDLE pipe);
 	~NamedPipeSocket();
 
 	bool connectToServer(const std::string& pipeName, int timeout = 5000);
@@ -27,13 +28,20 @@ public:
 	bool isOpen() const;
 
 	std::function<void(const char* data, std::size_t size)> onReadyRead;
+	std::function<void()> onWriteComplete;
+	std::function<void()> onDisconnected;
 
 private:
 	static VOID WINAPI readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVERLAPPED lpOverLap);
+	static VOID WINAPI writeComplete(DWORD dwErr, DWORD cbWritten, LPOVERLAPPED lpOverLap);
+	void _readyRead(std::size_t readSize);
+	void _writeComplete();
+	void _disconnected();
 	void setReadyReadCallback();
+	void createPipeInstance(HANDLE pipe);
 
 	LPPIPEINST m_pipeInstance;
-	//HANDLE m_pipe;
+	bool isServerEnd;
 	std::vector<char> m_readBuffer;
 };
 

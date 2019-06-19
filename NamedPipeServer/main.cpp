@@ -1,4 +1,4 @@
-#include <windows.h> 
+/*#include <windows.h> 
 #include <stdio.h>
 #include <tchar.h>
 #include <strsafe.h>
@@ -296,4 +296,31 @@ VOID GetAnswerToRequest(LPPIPEINST pipe)
 	_tprintf(TEXT("[%d] %s\n"), pipe->hPipeInst, pipe->chRequest);
 	StringCchCopy(pipe->chReply, BUFSIZE, TEXT("Default answer from server"));
 	pipe->cbToWrite = (lstrlen(pipe->chReply) + 1) * sizeof(TCHAR);
+}
+*/
+
+#include <iostream>
+
+#include "NamedPipeServer.h"
+
+int main()
+{
+	NamedPipeServer server;
+
+	server.onNewConnection = ([](NamedPipeSocket * socket) {
+		socket->onReadyRead = [socket](const char *data, std::size_t size) {
+			std::cout << "receive (" << size << "):" << data;
+
+			if (data == std::string("hello"))
+				socket->write(" world");
+			else
+				socket->write(("receive size:" + std::to_string(size)).data());
+		};
+		socket->onDisconnected = [socket]() {
+			delete socket;
+		};
+	});
+
+	server.listen("mynamedpipe");
+	server.processEvents();
 }

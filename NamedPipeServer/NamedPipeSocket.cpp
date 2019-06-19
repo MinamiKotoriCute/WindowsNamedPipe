@@ -7,11 +7,19 @@
 
 NamedPipeSocket::NamedPipeSocket()
 {
+	isServerEnd = false;
+}
+
+NamedPipeSocket::NamedPipeSocket(HANDLE pipe)
+{
+	isServerEnd = true;
+	createPipeInstance(pipe);
 }
 
 
 NamedPipeSocket::~NamedPipeSocket()
 {
+	close();
 }
 
 bool NamedPipeSocket::connectToServer(const std::string& pipeName, int timeout)
@@ -45,7 +53,7 @@ bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::st
 		// Exit if an error other than ERROR_PIPE_BUSY occurs. 
 		if (GetLastError() != ERROR_PIPE_BUSY)
 		{
-			printf("Could not open pipe. GLE=%d\n", GetLastError());
+			printf("Could not open pipe. GetLastError=%d\n", GetLastError());
 			return false;
 		}
 
@@ -57,20 +65,7 @@ bool NamedPipeSocket::connectToServer(const std::string& pipeName, const std::st
 		}
 	}
 
-	m_pipeInstance = (LPPIPEINST)GlobalAlloc(
-		GPTR, sizeof(PIPEINST));
-	if (m_pipeInstance == NULL)
-	{
-		printf("GlobalAlloc failed (%d)\n", GetLastError());
-		return 0;
-	}
-
-	m_pipeInstance->hPipeInst = hPipe;
-	m_pipeInstance->instance = this;
-
-	// set ready read callback
-	m_readBuffer.resize(BUFSIZE);
-	setReadyReadCallback();
+	createPipeInstance(hPipe);
 
 	return isOpen();
 }
@@ -89,16 +84,20 @@ void NamedPipeSocket::write(const char* data, std::size_t size)
 	}
 
 	DWORD dwWritten;
-	WriteFile(m_pipeInstance->hPipeInst,
+	WriteFileEx(
+		m_pipeInstance->hPipeInst,
 		data,
-		size,   // = length of string + terminating '\0' !!!
-		&dwWritten,
-		NULL);
+		size,
+		(LPOVERLAPPED)m_pipeInstance,
+		(LPOVERLAPPED_COMPLETION_ROUTINE)& NamedPipeSocket::writeComplete);
 }
 
 void NamedPipeSocket::close()
 {
 	if (isOpen()) {
+		if(isServerEnd && !DisconnectNamedPipe(m_pipeInstance->hPipeInst))
+			printf("DisconnectNamedPipe failed with %d.\n", GetLastError());
+
 		CloseHandle(m_pipeInstance->hPipeInst);
 		m_pipeInstance->hPipeInst = NULL;
 
@@ -117,13 +116,66 @@ VOID __stdcall NamedPipeSocket::readyRead(DWORD dwErr, DWORD cbBytesRead, LPOVER
 	LPPIPEINST lpPipeInst = (LPPIPEINST)lpOverLap;
 	NamedPipeSocket* instance = (NamedPipeSocket*)lpPipeInst->instance;
 
-	if (dwErr == 0 && instance->onReadyRead) {
-		instance->onReadyRead(&instance->m_readBuffer[0], cbBytesRead);
+	switch (dwErr)
+	{
+	case ERROR_SUCCESS:
+		instance->_readyRead(cbBytesRead);
+		break;
+
+	case ERROR_BROKEN_PIPE:
+		instance->_disconnected();
+		break;
+
+	default:
+		printf("writeComplete GetLastError(): %d", GetLastError());
+		break;
 	}
+}
+
+VOID __stdcall NamedPipeSocket::writeComplete(DWORD dwErr, DWORD cbWritten, LPOVERLAPPED lpOverLap)
+{
+	LPPIPEINST lpPipeInst = (LPPIPEINST)lpOverLap;
+	NamedPipeSocket* instance = (NamedPipeSocket*)lpPipeInst->instance;
+
+	switch (dwErr)
+	{
+	case ERROR_SUCCESS:
+		instance->_writeComplete();
+		break;
+
+	case ERROR_BROKEN_PIPE:
+		instance->_disconnected();
+		break;
+
+	default:
+		printf("writeComplete GetLastError(): %d", GetLastError());
+		break;
+	}
+}
+
+void NamedPipeSocket::_readyRead(std::size_t readSize)
+{
+	onReadyRead(&m_readBuffer[0], readSize);
+	setReadyReadCallback();
+}
+
+void NamedPipeSocket::_writeComplete()
+{
+	if (onWriteComplete)
+		onWriteComplete();
+}
+
+void NamedPipeSocket::_disconnected()
+{
+	if (onDisconnected)
+		onDisconnected();
 }
 
 void NamedPipeSocket::setReadyReadCallback()
 {
+	if (!isOpen())
+		return;
+
 	BOOL fRead = ReadFileEx(
 		m_pipeInstance->hPipeInst,
 		&m_readBuffer[0],
@@ -132,7 +184,7 @@ void NamedPipeSocket::setReadyReadCallback()
 		(LPOVERLAPPED_COMPLETION_ROUTINE)&NamedPipeSocket::readyRead);
 
 	if (!fRead) {
-		printf("GG\n");
+		close();
 		return;
 	}
 
@@ -140,8 +192,28 @@ void NamedPipeSocket::setReadyReadCallback()
 	{
 	case ERROR_SUCCESS:
 		break;
+	case ERROR_IO_PENDING:
+		break;
 	default:
-		printf("GGGG %d", GetLastError());
+		printf("ReadFileEx %d", GetLastError());
 		break;
 	}
+}
+
+void NamedPipeSocket::createPipeInstance(HANDLE pipe)
+{
+	m_pipeInstance = (LPPIPEINST)GlobalAlloc(
+		GPTR, sizeof(PIPEINST));
+	if (m_pipeInstance == NULL)
+	{
+		printf("GlobalAlloc failed (%d)\n", GetLastError());
+		return;
+	}
+
+	m_pipeInstance->hPipeInst = pipe;
+	m_pipeInstance->instance = this;
+
+	// set ready read callback
+	m_readBuffer.resize(BUFSIZE);
+	setReadyReadCallback();
 }

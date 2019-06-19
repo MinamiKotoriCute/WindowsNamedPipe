@@ -1,5 +1,6 @@
 #include "NamedPipeServer.h"
 
+#include <system_error>
 #include "NamedPipeDefinition.h"
 
 #define PIPE_TIMEOUT 5000
@@ -14,50 +15,14 @@ NamedPipeServer::NamedPipeServer()
 
 NamedPipeServer::~NamedPipeServer()
 {
+	close();
 }
 
-bool NamedPipeServer::listen(const std::string& pipeName)
-{
-	return listen(pipeName, "");
-}
-
-bool NamedPipeServer::listen(const std::string& pipeName, const std::string& serverName)
+void NamedPipeServer::listen(const std::string& pipeName)
 {
 	close();
 
-	m_pipe = CreateNamedPipe(TEXT(("\\\\" + serverName + "\\pipe\\" + pipeName).data()),
-		PIPE_ACCESS_DUPLEX,
-		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,   // FILE_FLAG_FIRST_PIPE_INSTANCE is not needed but forces CreateNamedPipe(..) to fail if the pipe already exists...
-		1,
-		1024 * 16,
-		1024 * 16,
-		NMPWAIT_USE_DEFAULT_WAIT,
-		NULL);
-
-	if (m_pipe != INVALID_HANDLE_VALUE) {
-		if (ConnectNamedPipe(m_pipe, NULL) != FALSE)   // wait for someone to connect to the pipe
-		{
-			/*while (ReadFile(hPipe, buffer, sizeof(buffer) - 1, &dwRead, NULL) != FALSE)
-			{
-				// add terminating zero
-				buffer[dwRead] = '\0';
-
-				// do something with data in buffer
-				printf("%s", buffer);
-			}*/
-		}
-	}
-	else
-		m_pipe = NULL;
-
-
-
-	return isListening();
-}
-
-bool NamedPipeServer::listen2(const std::string& pipeName, const std::string& serverName)
-{
-	pipeNameFull = "\\\\" + serverName + "\\pipe\\" + pipeName;
+	pipeNameFull = "\\\\.\\pipe\\" + pipeName;
 
 	m_connectEvent = CreateEvent(
 		NULL,    // default security attribute
@@ -66,45 +31,48 @@ bool NamedPipeServer::listen2(const std::string& pipeName, const std::string& se
 		NULL);   // unnamed event object  
 
 	if (m_connectEvent == NULL)
-	{
-		printf("CreateEvent failed with %d.\n", GetLastError());
-		return false;
-	}
+		throw std::runtime_error(std::string("CreateEvent failed with " + std::to_string(GetLastError())) + ".\n");
+
 	m_oConnect.hEvent = m_connectEvent;
 
-	return connectToNewClient();
+	listen();
 }
 
-bool NamedPipeServer::isListening() const
+bool NamedPipeServer::isListening() const noexcept
 {
 	return m_pipe != NULL;
 }
 
-void NamedPipeServer::close()
+void NamedPipeServer::close() noexcept
 {
 	if (m_pipe) {
 		DisconnectNamedPipe(m_pipe);
+		CloseHandle(m_pipe);
 		m_pipe = NULL;
+	}
+
+	if (m_connectEvent) {
+		CloseHandle(m_connectEvent);
+		m_connectEvent = NULL;
 	}
 }
 
 void NamedPipeServer::processEvents()
 {
-	/*DWORD dwWait = WaitForSingleObjectEx(
-		m_connectEvent,  // event object to wait for 
-		INFINITE,       // waits indefinitely 
-		TRUE);          // alertable wait enabled 
+	while (true) {
+		DWORD dwWait = WaitForSingleObjectEx(
+			m_connectEvent,  // event object to wait for 
+			INFINITE,       // waits indefinitely 
+			TRUE);          // alertable wait enabled 
 
-	switch (dwWait)
-	{
-		// The wait conditions are satisfied by a completed connect 
-		// operation. 
-	case 0:
-		// If an operation is pending, get the result of the 
-		// connect operation. 
-
-		if (fPendingIO)
+		switch (dwWait)
 		{
+			// The wait conditions are satisfied by a completed connect 
+			// operation. 
+		case WAIT_OBJECT_0: {
+			// If an operation is pending, get the result of the 
+			// connect operation. 
+
 			DWORD cbRet;
 			BOOL fSuccess = GetOverlappedResult(
 				m_pipe,     // pipe handle 
@@ -114,53 +82,23 @@ void NamedPipeServer::processEvents()
 			if (!fSuccess)
 			{
 				printf("ConnectNamedPipe (%d)\n", GetLastError());
-				return 0;
+				return;
 			}
+
+			createNewConnectionAndListen(m_pipe);
+			break;
 		}
+		case WAIT_IO_COMPLETION:
+			break;
 
-		// Allocate storage for this instance. 
-
-		lpPipeInst = (LPPIPEINST)GlobalAlloc(
-			GPTR, sizeof(PIPEINST));
-		if (lpPipeInst == NULL)
-		{
-			printf("GlobalAlloc failed (%d)\n", GetLastError());
-			return 0;
+			// An error occurred in the wait function. 
+		default:
+			throw std::runtime_error(std::string("WaitForSingleObjectEx (" + std::to_string(GetLastError()) + ")"));
 		}
-
-		lpPipeInst->hPipeInst = hPipe;
-
-		// Start the read operation for this client. 
-		// Note that this same routine is later used as a 
-		// completion routine after a write operation. 
-
-		lpPipeInst->cbToWrite = 0;
-		CompletedWriteRoutine(0, 0, (LPOVERLAPPED)lpPipeInst);
-
-		// Create new pipe instance for the next client. 
-
-		fPendingIO = CreateAndConnectInstance(
-			&oConnect);
-		break;
-
-		// The wait is satisfied by a completed read or write 
-		// operation. This allows the system to execute the 
-		// completion routine. 
-
-	case WAIT_IO_COMPLETION:
-		break;
-
-		// An error occurred in the wait function. 
-
-	default:
-	{
-		printf("WaitForSingleObjectEx (%d)\n", GetLastError());
-		return 0;
 	}
-	}*/
 }
 
-bool NamedPipeServer::connectToNewClient()
+void NamedPipeServer::listen()
 {
 	m_pipe = CreateNamedPipe(
 		pipeNameFull.data(),             // pipe name 
@@ -176,75 +114,31 @@ bool NamedPipeServer::connectToNewClient()
 		NULL);                    // default security attributes
 
 	if (m_pipe == INVALID_HANDLE_VALUE)
-	{
-		printf("CreateNamedPipe failed with %d.\n", GetLastError());
-		return false;
-	}
+		throw std::runtime_error(std::string("CreateNamedPipe failed with " + std::to_string(GetLastError())) + ".\n");
 
-	if (ConnectNamedPipe(m_pipe, &m_oConnect)) {
-		printf("ConnectNamedPipe failed with %d.\n", GetLastError());
-		return false;
-	}
+	if (ConnectNamedPipe(m_pipe, &m_oConnect))
+		throw std::runtime_error(std::string("ConnectNamedPipe failed with " + std::to_string(GetLastError())) + ".\n");
 
 	switch (GetLastError())
 	{
 		// The overlapped connection in progress. 
 	case ERROR_IO_PENDING:
-		return true;
 		break;
 
 		// Client is already connected, so signal an event. 
 	case ERROR_PIPE_CONNECTED:
-		createNewClient();
+		createNewConnectionAndListen(m_pipe);
 		break;
 
 		// If an error occurs during the connect operation... 
 	default:
-	{
-		printf("ConnectNamedPipe failed with %d.\n", GetLastError());
-		return false;
+		throw std::runtime_error(std::string("ConnectNamedPipe failed with " + std::to_string(GetLastError())) + ".\n");
 	}
-	}
-
-	return false;
 }
 
-bool NamedPipeServer::createNewClient()
+void NamedPipeServer::createNewConnectionAndListen(HANDLE pipe) noexcept
 {
-	// Allocate storage for this instance. 
-	LPPIPEINST lpPipeInst = (LPPIPEINST)GlobalAlloc(
-		GPTR, sizeof(PIPEINST));
-	if (lpPipeInst == NULL)
-	{
-		printf("GlobalAlloc failed (%d)\n", GetLastError());
-		return 0;
-	}
-
-	lpPipeInst->hPipeInst = m_pipe;
-
-
-	// Start the read operation for this client. 
-	// Note that this same routine is later used as a 
-	// completion routine after a write operation. 
-
-	//lpPipeInst->cbToWrite = 0;
-}
-
-
-
-VOID WINAPI ReadCallback(DWORD dwErr, DWORD cbBytesRead, LPOVERLAPPED lpOverLap)
-{
-	if (dwErr != 0) {
-		printf("ReadCallback failed (%lld)\n", dwErr);
-		return;
-	}
-
-	LPPIPEINST lpPipeInst = (LPPIPEINST)lpOverLap;
-
-	/*BOOL fRead = ReadFileEx(
-		lpPipeInst->hPipeInst,
-		lpPipeInst->chRequest,
-		BUFSIZE * sizeof(TCHAR),
-		(LPOVERLAPPED)lpPipeInst,
-		(LPOVERLAPPED_COMPLETION_ROUTINE)CompletedReadRoutine);*/
+	onNewConnection(new NamedPipeSocket(m_pipe));
+	m_pipe = NULL;
+	listen();
 }

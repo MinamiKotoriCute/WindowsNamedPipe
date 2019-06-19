@@ -3,28 +3,26 @@
 #include "../NamedPipeServer/NamedPipeSocket.h"
 
 
-void listenWinEvent()
-{
-	while(true)
-		SleepEx(100, true);
-}
-
 int main(int argc, char* argv[])
 {
-	NamedPipeSocket s;
-	s.onReadyRead = [](const char *data, std::size_t size) {
+	NamedPipeSocket socket;
+	socket.onReadyRead = [&socket](const char *data, std::size_t size) {
 		std::cout << "receive (" << size << "):" << data;
+		socket.close();
 	};
 
-
-	if (s.connectToServer("mynamedpipe") == false) {
+	if (socket.connectToServer("mynamedpipe") == false) {
 		std::cout << "connect to server false" << std::endl;
 		return -1;
 	}
 
-	s.write("asd");
+	const char msg[] = "hello";
+	std::cout << msg << std::endl;
+	socket.write(msg);
 
-	listenWinEvent();
+	while (socket.isOpen()) {
+		SleepEx(100, true);
+	}
 
 	return 0;
 }

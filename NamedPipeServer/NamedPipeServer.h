@@ -12,25 +12,20 @@ public:
 	NamedPipeServer();
 	~NamedPipeServer();
 
-	bool listen(const std::string& pipeName);
-	bool listen(const std::string& pipeName, const std::string &serverName);
-	bool listen2(const std::string& pipeName, const std::string& serverName);
+	void listen(const std::string& pipeName);
 
-	// check currently listening for incoming connections
-	bool isListening() const;
+	bool isListening() const noexcept;
 
-	void close();
+	void close() noexcept;
 
 	void processEvents();
 
+	std::function<void(NamedPipeSocket*)> onNewConnection;
+
 private:
-	// return is pending IO
-	bool connectToNewClient();
-	bool createNewClient();
+	void listen();
+	void createNewConnectionAndListen(HANDLE pipe) noexcept;
 
-
-
-	std::function<void(NamedPipeSocket*)> newConnectionHandle;
 	HANDLE m_pipe;
 	HANDLE m_connectEvent;
 	OVERLAPPED m_oConnect;
